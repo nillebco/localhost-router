@@ -49,6 +49,7 @@ usage() {
   echo "Usage:"
   echo "  ./lr up <name> <port>     # Add or update domain"
   echo "  ./lr down <name>          # Remove domain"
+  echo "  ./lr check <name>         # Verify certificate for domain"
   exit 1
 }
 
@@ -156,6 +157,35 @@ down() {
   rebuild_caddyfile
 }
 
+check() {
+  local name="$1"
+  if [ -z "$name" ]; then
+    echo "Error: Missing name for check command."
+    usage
+  fi
+
+  if ! is_mkcert_installed; then
+    echo "mkcert is not installed. Please run ./lr setup first."
+    exit 1
+  fi
+
+  local caroot
+  caroot=$(mkcert -CAROOT)
+  if [ -z "$caroot" ]; then
+    echo "Error: Could not determine mkcert CAROOT. Ensure mkcert is configured correctly."
+    exit 1
+  fi
+
+  local cacert_path="${caroot}/rootCA.pem"
+  if [ ! -f "$cacert_path" ]; then
+    echo "Error: Root CA certificate not found at ${cacert_path}. Please run ./lr setup or check mkcert configuration."
+    exit 1
+  fi
+
+  echo "--- Debug: Verifying certificate for https://${name}.localhost using CA at ${cacert_path}"
+  curl -v "https://${name}.localhost" --cacert "${cacert_path}"
+}
+
 rebuild_caddyfile() {
   cp "$BASE" "$CADDYFILE"
   while IFS=: read -r name port; do
@@ -180,6 +210,9 @@ case "$CMD" in
     ;;
   down)
     down "$NAME"
+    ;;
+  check)
+    check "$NAME"
     ;;
   *)
     usage
