@@ -1,4 +1,0 @@
-react.localhost {
-  tls /certs/localhost.pem /certs/localhost-key.pem
-  reverse_proxy host.docker.internal:3000
-}
