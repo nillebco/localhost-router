@@ -1,0 +1,135 @@
+#!/bin/bash
+# set -e # Temporarily disabled for debugging
+
+CADDYFILE="./Caddyfile"
+BASE="./Caddyfile.base"
+DOMAINS="./domains.conf"
+
+CMD="$1"
+NAME="$2"
+PORT="$3"
+
+is_mkcert_installed() {
+  command -v mkcert &> /dev/null
+}
+
+install_mkcert() {
+  if is_mkcert_installed; then
+    echo "mkcert is already installed."
+    return 0
+  fi
+
+  OS="$(uname -s)"
+
+  if [ "$OS" = "Darwin" ]; then
+    brew install mkcert
+  elif [ "$OS" = "Linux" ]; then
+    sudo apt install libnss3-tools
+    curl -JLO https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v$(uname -s)-$(uname -m)
+    chmod +x mkcert-*
+    sudo mv mkcert-* /usr/local/bin/mkcert
+  else
+    echo "Unsupported OS: $OS"
+    exit 1
+  fi
+}
+
+setup() {
+  if ! is_mkcert_installed; then
+    echo "mkcert not found. Attempting to install..."
+    install_mkcert
+  fi
+  mkcert -install
+  mkdir -p mkcert
+  mkcert -cert-file mkcert/localhost.pem -key-file mkcert/localhost-key.pem "*.localhost"
+  exit 0
+}
+
+usage() {
+  echo "Usage:"
+  echo "  ./lr up <name> <port>     # Add or update domain"
+  echo "  ./lr down <name>          # Remove domain"
+  exit 1
+}
+
+up() {
+  local name="$1"
+  local port="$2"
+  echo "--- Debug: up() called with name='$name', port='$port'"
+  echo "--- Debug: DOMAINS path is '$DOMAINS', DOMAINS.tmp path is '$DOMAINS.tmp'"
+  echo "--- Debug: Current directory is '$(pwd)'"
+
+  [ -f "$DOMAINS" ] || { echo "--- Debug: $DOMAINS does not exist, attempting to touch it."; touch "$DOMAINS"; }
+  echo "--- Debug: Content of $DOMAINS before grep:"
+  cat "$DOMAINS" || echo "--- Debug: Failed to cat $DOMAINS"
+  echo "--- Debug: End of $DOMAINS content (or error if failed to cat)."
+
+  if [ -z "$name" ] || [ -z "$port" ]; then
+    echo "--- Debug: name ('$name') or port ('$port') is empty. Calling usage."
+    usage
+  fi
+
+  echo "--- Debug: Attempting to touch $DOMAINS.tmp to check writability."
+  touch "$DOMAINS.tmp" || { echo "--- Debug: CRITICAL - Failed to touch $DOMAINS.tmp. Please check permissions. Exiting."; exit 1; }
+  echo "--- Debug: Successfully touched $DOMAINS.tmp (or it already existed)."
+
+  echo "--- Debug: About to grep '$DOMAINS' for lines NOT matching '^${name}:' into '$DOMAINS.tmp'"
+  grep -v "^${name}:" "$DOMAINS" > "$DOMAINS.tmp" 2> "$DOMAINS.grep_stderr.log"
+  local grep_exit_code=$?
+  echo "--- Debug: grep exit code: $grep_exit_code."
+  echo "--- Debug: Content of $DOMAINS.tmp after grep:"
+  cat "$DOMAINS.tmp" || echo "--- Debug: Failed to cat $DOMAINS.tmp"
+  echo "--- Debug: Standard error from grep (if any) from $DOMAINS.grep_stderr.log:"
+  cat "$DOMAINS.grep_stderr.log" || echo "--- Debug: No stderr log from grep, or failed to cat it."
+
+  echo "--- Debug: About to echo '${name}:${port}' >> '$DOMAINS.tmp'"
+  echo "${name}:${port}" >> "$DOMAINS.tmp"
+  echo "--- Debug: Content of $DOMAINS.tmp after echo:"
+  cat "$DOMAINS.tmp" # Show what echo added
+
+  echo "--- Debug: About to mv '$DOMAINS.tmp' to '$DOMAINS'"
+  mv "$DOMAINS.tmp" "$DOMAINS"
+  echo "--- Debug: mv command finished. Checking if $DOMAINS exists and its content:"
+  if [ -f "$DOMAINS" ]; then cat "$DOMAINS"; else echo "--- Debug: $DOMAINS does not exist after mv."; fi
+
+  rebuild_caddyfile
+}
+
+down() {
+  local name="$1"
+  [ -f "$DOMAINS" ] || touch "$DOMAINS"
+  if [ -z "$name" ]; then usage; fi
+  grep -v "^${name}:" "$DOMAINS" > "$DOMAINS.tmp"
+  mv "$DOMAINS.tmp" "$DOMAINS"
+  rebuild_caddyfile
+}
+
+rebuild_caddyfile() {
+  cp "$BASE" "$CADDYFILE"
+  while IFS=: read -r name port; do
+    cat >> "$CADDYFILE" <<EOF
+${name}.localhost {
+  tls /certs/localhost.pem /certs/localhost-key.pem
+  reverse_proxy host.docker.internal:${port}
+}
+EOF
+  done < "$DOMAINS"
+
+  docker compose up -d
+  docker exec caddy-localhost-router caddy reload --config /etc/caddy/Caddyfile || true
+}
+
+case "$CMD" in
+  setup)
+    setup
+    ;;
+  up)
+    up "$NAME" "$PORT"
+    ;;
+  down)
+    down "$NAME"
+    ;;
+  *)
+    usage
+    ;;
+esac

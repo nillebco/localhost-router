@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy-localhost-router
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./mkcert:/certs
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
