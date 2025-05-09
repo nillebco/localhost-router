@@ -69,6 +69,17 @@ up() {
     usage
   fi
 
+  echo "--- Debug: Ensuring mkcert directory exists."
+  mkdir -p mkcert
+  echo "--- Debug: Generating certificate for ${name}.localhost"
+  mkcert -cert-file "mkcert/${name}.localhost.pem" -key-file "mkcert/${name}.localhost-key.pem" "${name}.localhost"
+  if [ $? -ne 0 ]; then
+    echo "--- Debug: ERROR - Failed to generate certificate for ${name}.localhost. Exiting."
+    exit 1
+  else
+    echo "--- Debug: Successfully generated certificate for ${name}.localhost."
+  fi
+
   echo "--- Debug: Attempting to touch $DOMAINS.tmp to check writability."
   touch "$DOMAINS.tmp" || { echo "--- Debug: CRITICAL - Failed to touch $DOMAINS.tmp. Please check permissions. Exiting."; exit 1; }
   echo "--- Debug: Successfully touched $DOMAINS.tmp (or it already existed)."
@@ -92,6 +103,25 @@ up() {
   echo "--- Debug: mv command finished. Checking if $DOMAINS exists and its content:"
   if [ -f "$DOMAINS" ]; then cat "$DOMAINS"; else echo "--- Debug: $DOMAINS does not exist after mv."; fi
 
+  # Add to /etc/hosts
+  local host_entry="127.0.0.1 ${name}.localhost"
+  echo "--- Debug: Checking for '${host_entry}' in /etc/hosts"
+  if ! grep -qF -- "$host_entry" /etc/hosts; then
+    read -p "Do you want to add '${host_entry}' to /etc/hosts? (y/N) " response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+      echo "--- Debug: Adding '$host_entry' to /etc/hosts"
+      if ! echo "$host_entry" | sudo tee -a /etc/hosts > /dev/null; then
+        echo "--- Debug: ERROR - Failed to add '$host_entry' to /etc/hosts. Check sudo permissions and if /etc/hosts is writable."
+      else
+        echo "--- Debug: Successfully added '$host_entry' to /etc/hosts."
+      fi
+    else
+      echo "--- Debug: Skipped adding '$host_entry' to /etc/hosts."
+    fi
+  else
+    echo "--- Debug: Entry '$host_entry' already exists in /etc/hosts"
+  fi
+
   rebuild_caddyfile
 }
 
@@ -101,6 +131,28 @@ down() {
   if [ -z "$name" ]; then usage; fi
   grep -v "^${name}:" "$DOMAINS" > "$DOMAINS.tmp"
   mv "$DOMAINS.tmp" "$DOMAINS"
+
+  # Remove from /etc/hosts
+  local host_entry="127.0.0.1 ${name}.localhost"
+  echo "--- Debug: Checking for '${host_entry}' in /etc/hosts"
+  if grep -qF -- "$host_entry" /etc/hosts; then
+    read -p "Do you want to remove '${host_entry}' from /etc/hosts? (y/N) " response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+      echo "--- Debug: Removing '$host_entry' from /etc/hosts"
+      # Create a backup and then use sed to delete the line. BSD sed requires -i ''.
+      if sudo cp /etc/hosts /etc/hosts.bak && sudo sed -i'' -e "/^${host_entry//\//\\/}$/d" /etc/hosts; then
+        echo "--- Debug: Successfully removed '$host_entry' from /etc/hosts. Backup created at /etc/hosts.bak"
+      else
+        echo "--- Debug: ERROR - Failed to remove '$host_entry' from /etc/hosts. Check sudo permissions."
+        echo "--- Debug: /etc/hosts may have been backed up to /etc/hosts.bak. Please check."
+      fi
+    else
+      echo "--- Debug: Skipped removing '$host_entry' from /etc/hosts."
+    fi
+  else
+    echo "--- Debug: Entry '$host_entry' not found in /etc/hosts, skipping removal."
+  fi
+
   rebuild_caddyfile
 }
 
@@ -109,7 +161,7 @@ rebuild_caddyfile() {
   while IFS=: read -r name port; do
     cat >> "$CADDYFILE" <<EOF
 ${name}.localhost {
-  tls /certs/localhost.pem /certs/localhost-key.pem
+  tls /certs/${name}.localhost.pem /certs/${name}.localhost-key.pem
   reverse_proxy host.docker.internal:${port}
 }
 EOF
