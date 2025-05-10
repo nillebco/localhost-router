@@ -32,3 +32,7 @@ A: did you restart the browser after executing the `./lr setup` command?
 
 Q: I am getting a 502
 A: check that your service is actually running on that port
+
+## reference
+
+- [inspiration](https://inclouds.space/localhost-domains)
