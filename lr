@@ -1,9 +1,10 @@
 #!/bin/bash
 # set -e # Temporarily disabled for debugging
 
-CADDYFILE="./Caddyfile"
-BASE="./Caddyfile.base"
-DOMAINS="./domains.conf"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CADDYFILE="${SCRIPT_DIR}/Caddyfile"
+BASE="${SCRIPT_DIR}/Caddyfile.base"
+DOMAINS="${SCRIPT_DIR}/domains.conf"
 
 CMD="$1"
 NAME="$2"
@@ -71,9 +72,9 @@ up() {
   fi
 
   echo "--- Debug: Ensuring mkcert directory exists."
-  mkdir -p mkcert
+  mkdir -p "${SCRIPT_DIR}/mkcert"
   echo "--- Debug: Generating certificate for ${name}.localhost"
-  mkcert -cert-file "mkcert/${name}.localhost.pem" -key-file "mkcert/${name}.localhost-key.pem" "${name}.localhost"
+  mkcert -cert-file "${SCRIPT_DIR}/mkcert/${name}.localhost.pem" -key-file "${SCRIPT_DIR}/mkcert/${name}.localhost-key.pem" "${name}.localhost"
   if [ $? -ne 0 ]; then
     echo "--- Debug: ERROR - Failed to generate certificate for ${name}.localhost. Exiting."
     exit 1
