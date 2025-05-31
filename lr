@@ -207,6 +207,10 @@ EOF
   done < "$DOMAINS"
 }
 
+list() {
+  cat "$DOMAINS"
+}
+
 
 case "$CMD" in
   setup)
@@ -220,6 +224,9 @@ case "$CMD" in
     ;;
   check)
     check "$NAME"
+    ;;
+  list)
+    list
     ;;
   rebuild)
     rebuild_caddyfile
