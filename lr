@@ -51,7 +51,10 @@ usage() {
   echo "  ./lr up <name> <port>     # Add or update domain"
   echo "  ./lr down <name>          # Remove domain"
   echo "  ./lr check <name>         # Verify certificate for domain"
-  echo "  ./lr refresh              # Rebuild and reload Caddyfile"
+  echo "  ./lr refresh              # Restart the docker containers"
+  echo "  ./lr rebuild              # Rebuild the Caddyfile"
+  echo "  ./lr list                 # List the domains"
+  echo "  ./lr setup                # Setup mkcert"
   exit 1
 }
 

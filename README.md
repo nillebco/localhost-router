@@ -22,6 +22,18 @@ tear down an alias
 ./lr down react
 ```
 
+## restart the docker containers
+
+```sh
+lr refresh
+```
+
+## rebuild the Caddyfile
+
+```sh
+lr rebuild
+```
+
 ## FAQ
 
 Q: it's not working from the shell!
